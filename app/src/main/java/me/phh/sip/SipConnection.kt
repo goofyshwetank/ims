@@ -4,6 +4,8 @@ package me.phh.sip
 import android.net.IpSecManager
 import android.net.IpSecTransform
 import android.net.Network
+import android.system.Os
+import android.system.OsConstants
 import android.telephony.Rlog
 import java.io.FileDescriptor
 import java.io.InputStream
@@ -27,6 +29,8 @@ import java.nio.channels.spi.SelectorProvider
 /* wrapper around sockets + establish ipsec tunnel given ipsec helpers */
 private const val SIP_TCP_CONNECT_TIMEOUT_MS = 10_000
 private const val SIP_IPSEC_CLEANUP_TAG = "PHH SipConnection"
+// linux/tcp.h; not exposed by OsConstants
+private const val TCP_MAXSEG = 2
 
 private fun closeQuietly(label: String, close: () -> Unit) {
     try {
@@ -48,12 +52,26 @@ private fun abortTcpSocketFirst(socket: Socket, label: String) {
     closeQuietly(label) { socket.close() }
 }
 
+// Carrier mss_size: IMS PDNs often report MTU 1500 while the real path is
+// smaller and drops ICMPv6 Packet Too Big, so full-size segments vanish.
+// Set before connect() so our SYN advertises it too; accepted sockets inherit it.
+private fun applyTcpMss(fd: FileDescriptor, mss: Int) {
+    if (mss <= 0) return
+    try {
+        Os.setsockoptInt(fd, OsConstants.IPPROTO_TCP, TCP_MAXSEG, mss)
+    } catch (t: Throwable) {
+        Rlog.w(SIP_IPSEC_CLEANUP_TAG, "Failed to set TCP_MAXSEG=$mss", t)
+    }
+}
+
 private fun createTcpSocket(
     network: Network,
     localAddr: InetAddress?,
     localPort: Int,
+    mss: Int,
 ): Socket {
     return network.socketFactory.createSocket().apply {
+        applyTcpMss(javaClass.getMethod("getFileDescriptor\$").invoke(this) as FileDescriptor, mss)
         // The protected IMS flow may be reopened with the negotiated port-c
         // after a remote idle timeout. Set this before the first bind so the
         // port can be reused after the old TCP socket is synchronously reset.
@@ -132,12 +150,13 @@ class SipConnectionTcp(
     val network: Network,
     val remoteAddr: InetAddress,
     val _localAddr: InetAddress? = null,
-    val _localPort: Int = 0
+    val _localPort: Int = 0,
+    val mss: Int = 0,
 ) : SipConnection {
     private val stateLock = Any()
 
     @Volatile
-    var socket: Socket = createTcpSocket(network, _localAddr, _localPort)
+    var socket: Socket = createTcpSocket(network, _localAddr, _localPort, mss)
         private set
     /* redefine public localAddr/port for when not specified in argument */
     var localAddr: InetAddress
@@ -243,7 +262,7 @@ class SipConnectionTcp(
             check(!connected) { "TCP SIP connection is already connected" }
             check(remotePort > 0) { "TCP SIP connection has no previous remote port" }
 
-            val replacement = createTcpSocket(network, localAddr, localPort)
+            val replacement = createTcpSocket(network, localAddr, localPort, mss)
             try {
                 ipSecManager?.let { manager ->
                     check(this::inTransform.isInitialized && this::outTransform.isInitialized) {
@@ -323,7 +342,8 @@ class SipConnectionTcpServer(
     val network: Network,
     val remoteAddr: InetAddress,
     val localAddr: InetAddress,
-    val localPort: Int
+    val localPort: Int,
+    mss: Int = 0,
 ) {
     val serverSocket: ServerSocket
     val serverSocketFd: FileDescriptor
@@ -340,6 +360,7 @@ class SipConnectionTcpServer(
         serverSocketFd =
             serverSocket.javaClass.getMethod("getFileDescriptor\$").invoke(serverSocket)
                 as FileDescriptor
+        applyTcpMss(serverSocketFd, mss)
         network.bindSocket(serverSocketFd)
     }
 

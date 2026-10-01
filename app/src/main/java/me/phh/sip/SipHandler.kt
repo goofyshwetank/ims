@@ -2161,14 +2161,14 @@ fun onWfcDisabled(reason: String) {
         plainSocket = if (isControlSocketUdp)
             SipConnectionUdp(network, pcscfAddr, localAddr)
         else
-            SipConnectionTcp(network, pcscfAddr, localAddr)
+            SipConnectionTcp(network, pcscfAddr, localAddr, mss = carrierSettings.mssSize)
         connectSipSocketWithWatchdog(plainSocket, 5060, "plain initial")
         socket = if (plainSocket is SipConnectionTcp)
-                SipConnectionTcp(network, pcscfAddr, plainSocket.gLocalAddr())
+                SipConnectionTcp(network, pcscfAddr, plainSocket.gLocalAddr(), mss = carrierSettings.mssSize)
             else
                 SipConnectionUdp(network, pcscfAddr, plainSocket.gLocalAddr())
         serverSocket =
-            SipConnectionTcpServer(network, pcscfAddr, plainSocket.gLocalAddr(), socket.gLocalPort() + 1)
+            SipConnectionTcpServer(network, pcscfAddr, plainSocket.gLocalAddr(), socket.gLocalPort() + 1, carrierSettings.mssSize)
         serverSocketUdp =
             SipConnectionUdpServer(network, pcscfAddr, plainSocket.gLocalAddr(), socket.gLocalPort() + 1)
 
