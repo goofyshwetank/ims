@@ -795,7 +795,14 @@ class PhhMmTelFeature(
                     Rlog.d(TAG, "Ignoring terminate for an already terminated call")
                     return
                 }
-                mState = State.TERMINATING
+                mState = State.TERMINATED
+                outgoingCallActive = false
+                val reasonInfo = ImsReasonInfo(ImsReasonInfo.CODE_USER_TERMINATED, reason)
+                try {
+                    mListener.callSessionTerminated(reasonInfo)
+                } catch (t: Throwable) {
+                    Rlog.e(TAG, "callSessionTerminated error during terminate", t)
+                }
                 sipHandler.myHandler.post {
                     sipHandler.terminateCall(outgoingCallSipCallId)
                 }
