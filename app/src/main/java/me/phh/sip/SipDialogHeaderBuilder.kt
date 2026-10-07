@@ -23,7 +23,7 @@ object SipDialogHeaderBuilder {
         val cseq = call.localCseq.getAndIncrement()
         val base = commonHeaders - "route" - "security-verify" - "require" -
             "proxy-require" - "content-type" - "content-length" - "record-route" -
-            "rseq" - "p-access-network-info"
+            "rseq" - "p-access-network-info" - "contact"
         val directionHeaders = if (call.outgoing) {
             mapOf(
                 "from" to call.callHeaders["from"]!!,
@@ -51,9 +51,11 @@ object SipDialogHeaderBuilder {
                 "require" to listOf("sec-agree"),
             )
         } ?: emptyMap()
+        // RFC 3261 table 3: Contact is not allowed in BYE; Lucent P-CSCFs silently drop such a BYE.
+        val contactHeader = if (method == SipMethod.BYE) emptyMap() else "Contact: $contact".toSipHeadersMap()
         return base + directionHeaders + routeSet + securityHeaders + mapOf("call-id" to call.callHeaders["call-id"]!!) +
+            contactHeader +
             """
-            Contact: $contact
             CSeq: $cseq $method
             Content-Length: 0
             """.toSipHeadersMap()

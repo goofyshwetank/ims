@@ -167,6 +167,7 @@ internal class SipDispatcher(
                 486 -> "Busy Here"
                 487 -> "Request Terminated"
                 488 -> "Not Acceptable Here"
+                491 -> "Request Pending"
                 500 -> "Server Internal Error"
                 603 -> "Decline"
                 else -> "ERROR"

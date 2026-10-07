@@ -37,7 +37,7 @@ object SipUplinkAudioCaptureStarter {
 
         val audioRecord = try {
             SipAudioRecordFactory.createVoiceCommunicationRecord(
-                bufferSize = minBufferSize,
+                bufferSize = minBufferSize * 4,
                 audioCodec = audioCodec,
             )
         } catch (t: Throwable) {

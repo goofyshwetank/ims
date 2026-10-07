@@ -26,8 +26,11 @@ internal object SipOutgoingInviteFinalAck {
         // (RFC 3261 §12.1.2), not from the registration Service-Route in myHeaders.
         val dialogRoute = outgoingDialogRouteSet(response.headers)
         val dialogHeaders = myHeaders - "route" - "record-route"
+        val fallbackRoute = pcscfRouteFallback(myHeaders["route"])
         val ackHeaders = if (dialogRoute.isNotEmpty()) {
             dialogHeaders + ("route" to dialogRoute)
+        } else if (fallbackRoute.isNotEmpty()) {
+            dialogHeaders + ("route" to fallbackRoute)
         } else {
             dialogHeaders
         }

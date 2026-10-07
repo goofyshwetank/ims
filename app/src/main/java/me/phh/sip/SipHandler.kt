@@ -3673,9 +3673,26 @@ fun onWfcDisabled(reason: String) {
     fun handleUpdate(request: SipRequest): Int {
         val requestCallId = request.callIdOrEmpty()
         val requestCseq = request.headers["cseq"]?.getOrNull(0).orEmpty()
+        // The early dialog is installed only once the PRACK 200 arrives; networks may send
+        // their precondition UPDATE before that. 481 kills the call, so wait for the dialog.
+        // ponytail: polls on the reader thread; if the PRACK 200 shares this socket it only
+        // arrives after the wait, and the 491 below makes the network retry the UPDATE.
+        val earlyUpdateDeadline = android.os.SystemClock.uptimeMillis() + 4000
+        while (currentCall?.callIdOrNull() != requestCallId &&
+            pendingOutgoingInvite?.callId == requestCallId &&
+            android.os.SystemClock.uptimeMillis() < earlyUpdateDeadline
+        ) {
+            Thread.sleep(50)
+        }
         val call = currentCall
         val currentCallId = call?.callIdOrNull()
 
+        if ((call == null || currentCallId != requestCallId) &&
+            pendingOutgoingInvite?.callId == requestCallId
+        ) {
+            Rlog.w(TAG, "UPDATE before early dialog was installed: callId=$requestCallId cseq=$requestCseq, replying 491")
+            return 491
+        }
         if (call == null || currentCallId != requestCallId) {
             Rlog.w(
                 TAG,
@@ -4366,7 +4383,12 @@ fun onWfcDisabled(reason: String) {
             generation = generation,
             gainQ8 = imsUplinkGainQ8,
             nextSequenceNumber = { rtpSequenceNumber.getAndIncrement() },
-            nextTimestamp = { rtpTimestampSamples.getAndAdd(audioCodec.rtpTimestampStep) },
+            nextTimestamp = SipUplinkRtpClock(
+                samples = rtpTimestampSamples,
+                step = audioCodec.rtpTimestampStep,
+                sampleRate = audioCodec.sampleRate,
+                onSkip = { ms -> Rlog.w(TAG, "Uplink capture lost ${ms}ms; advancing RTP timestamp") },
+            )::next,
             sendFrame = sendFrame@{ sequenceNumber, timestamp, storageFrame, marker, frameType, frameSize, frameCount ->
                 val sendCall = currentCall ?: return@sendFrame false
                 SipUplinkMediaRtpSender.sendStorageFrame(
@@ -4484,6 +4506,7 @@ fun onWfcDisabled(reason: String) {
         }
     }
 
+    @Volatile
     var currentCall: Call? = null
     private var heldForegroundCall: Call? = null
     private var pendingSwapHeldActiveCall: Call? = null
@@ -5078,7 +5101,7 @@ fun onWfcDisabled(reason: String) {
             SipRemoteDialogTermination.localDialogRequestWriter(
                 incomingResponseWriter = call.incomingResponseWriter,
                 registeredDialogWriter = registeredDialogWriter,
-                fallbackWriter = {
+                mainWriter = {
                     mainSipWriterForOutbound("local BYE")
                 },
             )
@@ -5423,9 +5446,39 @@ fun onWfcDisabled(reason: String) {
         rejectCall(callId)
     }
 
+    private fun ipv4OnLink(lp: android.net.LinkProperties): java.net.Inet4Address? =
+        lp.linkAddresses
+            .asSequence()
+            .map { it.address }
+            .filterIsInstance<java.net.Inet4Address>()
+            .firstOrNull { !it.isAnyLocalAddress && !it.isLoopbackAddress }
+
+    // SIP stays on the P-CSCF family. Jio and Airtel media is IPv4 via the clat
+    // stacked link. An RTP socket bound to the IPv6 SIP address cannot connect.
+    private fun mediaLocalAddress(): java.net.InetAddress {
+        val lp = try {
+            connectivityManager.getLinkProperties(network)
+        } catch (_: Throwable) {
+            null
+        }
+        if (lp != null) {
+            ipv4OnLink(lp)?.let { return it }
+            val stacked = try {
+                lp.javaClass.getMethod("getStackedLinks").invoke(lp) as? List<*>
+            } catch (_: Throwable) {
+                null
+            }
+            stacked?.filterIsInstance<android.net.LinkProperties>()?.forEach { child ->
+                ipv4OnLink(child)?.let { return it }
+            }
+        }
+        return localAddr
+    }
+
     private fun createOutgoingCallRtpSocket(): DatagramSocket? {
+        val bindAddr = mediaLocalAddress()
         val rtpSocket = try {
-            DatagramSocket(0, localAddr)
+            DatagramSocket(0, bindAddr)
         } catch (t: Exception) {
             val localAddressText =
                 if (this::localAddr.isInitialized) localAddr.hostAddress else "uninitialized"
@@ -5465,8 +5518,8 @@ fun onWfcDisabled(reason: String) {
         return SipOutgoingInviteSdp.build(
             logTag = TAG,
             rtpSocket = rtpSocket,
-            localHost = "${socket.gLocalAddr().hostAddress}",
-            ipType = if (localAddr is Inet6Address) "IP6" else "IP4",
+            localHost = "${rtpSocket.localAddress.hostAddress}",
+            ipType = if (rtpSocket.localAddress is java.net.Inet4Address) "IP4" else "IP6",
             amrWbMediaCodecAvailable = carrierAmrWbMediaCodecAvailable,
             singtelStockOutgoingCarrier = useSingTelStockOutgoingPolicy(),
             preconditionEnabled = carrierSettings.preconditionEnabled(
@@ -5620,6 +5673,10 @@ fun onWfcDisabled(reason: String) {
             } else {
                 confirmedHeaders -= "record-route"
                 confirmedHeaders -= "route"
+                val fallbackRoute = pcscfRouteFallback(commonHeaders["route"])
+                if (fallbackRoute.isNotEmpty()) {
+                    confirmedHeaders = confirmedHeaders + ("route" to fallbackRoute)
+                }
             }
             // INVITE uses its original CSeq for ACK. Keep later in-dialog requests
             // past any PRACK/UPDATE/BYE CSeq already allocated while the call was pending.

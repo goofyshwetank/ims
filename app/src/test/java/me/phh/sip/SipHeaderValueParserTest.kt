@@ -35,4 +35,13 @@ class SipHeaderValueParserTest {
             ),
         )
     }
+    @Test
+    fun `pcscf route fallback keeps only the first registered route`() {
+        val registered = listOf(
+            "<sip:pcscf.example.test:6000;lr>, <sip:orig@scscf.example.test;lr>",
+            "<sip:pcscf.example.test:6000;lr>",
+        )
+        require(pcscfRouteFallback(registered) == listOf("<sip:pcscf.example.test:6000;lr>"))
+        require(pcscfRouteFallback(null).isEmpty())
+    }
 }

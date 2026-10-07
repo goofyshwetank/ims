@@ -4,12 +4,17 @@ import java.io.OutputStream
 
 internal object SipRemoteDialogTermination {
 
+    // TS 33.203: requests leave from the UE protected client port, i.e. the main flow.
+    // The dialog writers belong to connections the P-CSCF opened to our server port;
+    // P-CSCFs that keep the directions on separate connections drop requests sent there.
     fun localDialogRequestWriter(
         incomingResponseWriter: OutputStream?,
         registeredDialogWriter: OutputStream?,
-        fallbackWriter: () -> OutputStream,
+        mainWriter: () -> OutputStream,
     ): OutputStream =
-        incomingResponseWriter ?: registeredDialogWriter ?: fallbackWriter()
+        runCatching(mainWriter).getOrElse { error ->
+            incomingResponseWriter ?: registeredDialogWriter ?: throw error
+        }
 
 
 

@@ -2,52 +2,43 @@
 package me.phh.sip
 
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import org.junit.Assert.assertSame
 import org.junit.Test
 
 class SipRemoteDialogTerminationTest {
     @Test
-    fun `incoming dialog writer wins over dormant main flow`() {
-        val incomingWriter = ByteArrayOutputStream()
-        val registeredWriter = ByteArrayOutputStream()
-        var fallbackCalled = false
+    fun `main flow is preferred over dialog writers`() {
+        val mainWriter = ByteArrayOutputStream()
 
         val selected = SipRemoteDialogTermination.localDialogRequestWriter(
-            incomingResponseWriter = incomingWriter,
-            registeredDialogWriter = registeredWriter,
-            fallbackWriter = {
-                fallbackCalled = true
-                ByteArrayOutputStream()
-            },
+            incomingResponseWriter = ByteArrayOutputStream(),
+            registeredDialogWriter = ByteArrayOutputStream(),
+            mainWriter = { mainWriter },
         )
 
-        assertSame(incomingWriter, selected)
-        check(!fallbackCalled)
+        assertSame(mainWriter, selected)
     }
 
     @Test
-    fun `registered dialog writer wins when call has no stored writer`() {
+    fun `dialog writer is used when the main flow is unavailable`() {
         val registeredWriter = ByteArrayOutputStream()
 
         val selected = SipRemoteDialogTermination.localDialogRequestWriter(
             incomingResponseWriter = null,
             registeredDialogWriter = registeredWriter,
-            fallbackWriter = { ByteArrayOutputStream() },
+            mainWriter = { throw IOException("main flow down") },
         )
 
         assertSame(registeredWriter, selected)
     }
 
-    @Test
-    fun `main flow is used only without a dialog writer`() {
-        val fallbackWriter = ByteArrayOutputStream()
-
-        val selected = SipRemoteDialogTermination.localDialogRequestWriter(
+    @Test(expected = IOException::class)
+    fun `main flow error surfaces without any dialog writer`() {
+        SipRemoteDialogTermination.localDialogRequestWriter(
             incomingResponseWriter = null,
             registeredDialogWriter = null,
-            fallbackWriter = { fallbackWriter },
+            mainWriter = { throw IOException("main flow down") },
         )
-
-        assertSame(fallbackWriter, selected)
     }
 }

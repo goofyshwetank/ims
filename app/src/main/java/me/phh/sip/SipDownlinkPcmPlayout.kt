@@ -11,10 +11,10 @@ import kotlin.concurrent.thread
 internal object SipDownlinkPcmPlayout {
     private const val DOWNLINK_UNDERRUN_CONCEALMENT_FRAMES = 6
     private const val DOWNLINK_STARTUP_CONCEALMENT_PRIME_FRAMES = 4
-    private const val DOWNLINK_STARTUP_REBUFFER_FRAMES = 3
-    private const val DOWNLINK_STARTUP_REBUFFER_MAX_SILENCE_FRAMES = 4
-    private const val DOWNLINK_ADAPTIVE_REBUFFER_FRAMES = 2
-    private const val DOWNLINK_ADAPTIVE_REBUFFER_MAX_SILENCE_FRAMES = 4
+    private const val DOWNLINK_STARTUP_REBUFFER_FRAMES = 5
+    private const val DOWNLINK_STARTUP_REBUFFER_MAX_SILENCE_FRAMES = 6
+    private const val DOWNLINK_ADAPTIVE_REBUFFER_FRAMES = 4
+    private const val DOWNLINK_ADAPTIVE_REBUFFER_MAX_SILENCE_FRAMES = 6
     private const val DOWNLINK_ADAPTIVE_REBUFFER_TRIGGER_FRAMES = 12
 
     private fun attenuatePcm16LeFrame(frame: ByteArray, gainShift: Int): ByteArray {

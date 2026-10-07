@@ -3,6 +3,10 @@ package me.phh.sip
 
 /** A diagnostic SIP description that excludes URIs, identities, auth, and body data. */
 internal fun SipMessage.safeLogSummary(): String {
+    // Full messages contain phone numbers and SIM identities; debug only.
+    if (android.os.SystemProperties.getBoolean("persist.sys.phhims.sip_full_log", false)) {
+        return toString()
+    }
     val kind = when (this) {
         is SipRequest -> "request=$method"
         is SipResponse -> "response=$statusCode"

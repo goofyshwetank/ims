@@ -38,6 +38,14 @@ internal fun splitSipListHeader(value: String): List<String> {
 internal fun recordRouteValues(headers: SipHeadersMap): List<String> =
     headers["record-route"].orEmpty().flatMap(::splitSipListHeader)
 
+/**
+ * TS 24.229 5.1.2A.1.4: in-dialog requests still go out through the P-CSCF.
+ * When the remote side sent no Record-Route (e.g. a topology-hiding P-CSCF that
+ * rewrites Contact), route via the registered P-CSCF URI instead of the bare target.
+ */
+internal fun pcscfRouteFallback(registeredRoute: List<String>?): List<String> =
+    registeredRoute.orEmpty().flatMap(::splitSipListHeader).take(1)
+
 /** RFC 3261 section 12.1.2 route set for a dialog created by a UAC. */
 internal fun outgoingDialogRouteSet(headers: SipHeadersMap): List<String> =
     recordRouteValues(headers).asReversed()

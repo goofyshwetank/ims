@@ -20,7 +20,7 @@ object SipAudioTrackFactory {
             audioCodec.sampleRate,
             AudioFormat.CHANNEL_OUT_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
-            minBufferSize,
+            minBufferSize * 4,
             AudioTrack.MODE_STREAM,
         )
     }
