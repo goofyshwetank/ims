@@ -1114,11 +1114,28 @@ fun setRequestCallback(method: SipMethod, cb: (SipRequest) -> Int) {
         incomingAcceptedAwaitingAck.set(false)
         incomingHangupAfterAck.set(false)
         terminatedIncomingCallIds.clear()
+        val staleCall = currentCall
+        val stalePending = pendingOutgoingInvite
         currentCall = null
         pendingSwapHeldActiveCall = null
         clearHeldForegroundCall(reason = "IMS reconnect")
         clearPendingWaitingInvite(reason = "IMS reconnect")
         clearPendingOutgoingInvite(closeRtpSocket = true, reason = "IMS reconnect")
+        if (stalePending != null || staleCall != null) {
+            val callId = stalePending?.callId ?: staleCall?.callIdOrNull()
+            val extras = mutableMapOf(
+                "statusCode" to "503",
+                "statusString" to "Service Unavailable (IMS reconnect)",
+                "callStartFailed" to if (stalePending != null) "true" else "false",
+                "outgoingCall" to "true",
+            )
+            callId?.let { extras["call-id"] = it }
+            try {
+                onCancelledCall?.invoke(Object(), "IMS transport lost", extras)
+            } catch (t: Throwable) {
+                Rlog.e(TAG, "Failed notifying onCancelledCall during reconnect", t)
+            }
+        }
         callGeneration.incrementAndGet()
         prAckWaitTracker.clearAndNotifyAll()
         sessionRefresher.cancelAll("IMS reconnect")
