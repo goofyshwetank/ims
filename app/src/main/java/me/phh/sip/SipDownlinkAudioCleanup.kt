@@ -79,19 +79,11 @@ internal object SipDownlinkAudioCleanup {
         }
 
         if (audioTrack != null) {
-            if (playoutStopped) {
-                stopAudioTrack(logTag, audioTrack)
-                releaseAudioTrack(logTag, audioTrack)
-            } else {
-                Rlog.e(logTag, "Not releasing AudioTrack still used by downlink playout")
-            }
+            stopAudioTrack(logTag, audioTrack)
+            releaseAudioTrack(logTag, audioTrack)
         }
         if (decoder != null) {
-            if (decoderStopped) {
-                releaseDecoder(logTag, decoder)
-            } else {
-                Rlog.e(logTag, "Not releasing MediaCodec still used by decoder worker")
-            }
+            releaseDecoder(logTag, decoder)
         }
 
         SipAudioModeRestorer.restoreAfterImsCall(
@@ -137,17 +129,9 @@ internal object SipDownlinkAudioCleanup {
             )
         }
 
-        if (playoutStopped) {
-            stopAudioTrack(logTag, audioTrack)
-            releaseAudioTrack(logTag, audioTrack)
-        } else {
-            Rlog.e(logTag, "Not releasing AudioTrack still used by downlink playout")
-        }
-        if (decoderStopped) {
-            releaseDecoder(logTag, decoder)
-        } else {
-            Rlog.e(logTag, "Not releasing MediaCodec still used by decoder worker")
-        }
+        stopAudioTrack(logTag, audioTrack)
+        releaseAudioTrack(logTag, audioTrack)
+        releaseDecoder(logTag, decoder)
         val stopped = callStopped.get()
         val genMismatch = callGeneration.get() != generation
         if (genMismatch) {

@@ -57,6 +57,10 @@ internal class SipDownlinkAudioDecoderWorker(
         running.set(false)
         workerThread.interrupt()
         try {
+            decoder.stop()
+        } catch (_: Throwable) {
+        }
+        try {
             workerThread.join(timeoutMs)
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -83,7 +87,11 @@ internal class SipDownlinkAudioDecoderWorker(
         val outBufInfo = MediaCodec.BufferInfo()
         var drainTimeoutUs = firstTimeoutUs
         while (running.get()) {
-            val outBufIndex = decoder.dequeueOutputBuffer(outBufInfo, drainTimeoutUs)
+            val outBufIndex = try {
+                decoder.dequeueOutputBuffer(outBufInfo, drainTimeoutUs)
+            } catch (_: IllegalStateException) {
+                break
+            }
             drainTimeoutUs = 0L
             if (outBufIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 Rlog.d(logTag, "Decoder output format changed")
@@ -91,13 +99,17 @@ internal class SipDownlinkAudioDecoderWorker(
             }
             if (outBufIndex < 0) break
 
-            val outBuf = decoder.getOutputBuffer(outBufIndex)!!
+            val outBuf = decoder.getOutputBuffer(outBufIndex) ?: break
             val pcm = ByteArray(outBufInfo.size)
             outBuf.position(outBufInfo.offset)
             outBuf.limit(outBufInfo.offset + outBufInfo.size)
             outBuf.get(pcm)
             offerPcmFrame(pcm)
-            decoder.releaseOutputBuffer(outBufIndex, false)
+            try {
+                decoder.releaseOutputBuffer(outBufIndex, false)
+            } catch (_: IllegalStateException) {
+                break
+            }
         }
     }
 
@@ -123,9 +135,13 @@ internal class SipDownlinkAudioDecoderWorker(
                 val codecFrame = encodedQueue.poll(10L, TimeUnit.MILLISECONDS)
                     ?: continue
 
-                val inBufIndex = decoder.dequeueInputBuffer(
-                    DECODER_INPUT_TIMEOUT_US,
-                )
+                val inBufIndex = try {
+                    decoder.dequeueInputBuffer(
+                        DECODER_INPUT_TIMEOUT_US,
+                    )
+                } catch (_: IllegalStateException) {
+                    break
+                }
                 if (inBufIndex < 0) {
                     val dropped = decoderInputDropCount.incrementAndGet()
                     if (dropped <= 5 || dropped % 50 == 0) {
