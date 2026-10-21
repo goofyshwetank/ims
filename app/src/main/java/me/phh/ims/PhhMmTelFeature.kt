@@ -826,8 +826,15 @@ class PhhMmTelFeature(
                 extras["call-id"]?.let { outgoingCallSipCallId = it }
                 session.mState = ImsCallSessionImplBase.State.ESTABLISHING
                 val callProfile = makeVoiceCallProfile()
-                callProfile.mMediaProfile.mAudioDirection =
+                val hasRemoteEarlyMedia = sipHandler.currentCall?.hasEarlyMedia == true ||
+                    sipHandler.threadsStarted.get() ||
+                    extras["local-ringback"] != "true"
+                callProfile.mMediaProfile.mAudioDirection = if (hasRemoteEarlyMedia) {
+                    Rlog.i(TAG, "Outgoing call progressing with remote early media; suppressing local ringback")
+                    android.telephony.ims.ImsStreamMediaProfile.DIRECTION_RECEIVE
+                } else {
                     android.telephony.ims.ImsStreamMediaProfile.DIRECTION_INACTIVE
+                }
                 session.currentCallProfile = callProfile
                 session.mListener.callSessionProgressing(callProfile.mMediaProfile)
                 outgoingCallProgressReported = true
