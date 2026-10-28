@@ -131,6 +131,7 @@ internal object SipIncomingInviteDialogSetup {
         }
         try {
             bindSocket(rtpSocket)
+            rtpSocket.soTimeout = 20
             // Do not connect incoming RTP sockets. A connected DatagramSocket filters
             // received UDP packets to the connected remote address and port. Some IMS
             // media gateways send downlink RTP from a source port different from the
